@@ -1,7 +1,7 @@
 package container_test
 
 import (
-	"github.com/golobby/container"
+	"github.com/ChicK00o/container"
 	"github.com/stretchr/testify/assert"
 	"testing"
 )

@@ -1,5 +1,5 @@
-module github.com/golobby/container
+module github.com/ChicK00o/container
 
-go 1.11
+go 1.14
 
 require github.com/stretchr/testify v1.4.0
