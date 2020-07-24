@@ -8,31 +8,75 @@ import (
 
 // invoke will call the given function and return its returned value.
 // It only works for functions that return a single value.
-func invoke(function interface{}) interface{} {
-	return reflect.ValueOf(function).Call(arguments(function))[0].Interface()
+func invoke(function interface{}) reflect.Value {
+	return reflect.ValueOf(function).Call(arguments(function))[0]
 }
 
 // binding keeps a binding resolver and instance (for singleton bindings).
 type binding struct {
-	resolver  interface{} // resolver function
-	instance  interface{} // instance stored for singleton bindings
-	singleton bool
+	resolver    interface{} // resolver function
+	instance    reflect.Value
+	pointer     reflect.Value
+	singleton   bool
+	pointerType bool //pointer type
+	initialized bool
 }
 
 // resolve will return the concrete of related abstraction.
-func (b *binding) resolve() interface{} {
+func (b *binding) resolve(pointerType bool) reflect.Value {
 	if b.singleton {
-		if b.instance == nil {
-			b.instance = invoke(b.resolver)
+		if !b.initialized {
+			b.initialize()
 		}
-		return b.instance
+		return b.returnValue(pointerType)
 	}
-	return invoke(b.resolver)
+	return b.newValue(pointerType)
+}
+
+func (b *binding) initialize() {
+	if b.pointerType {
+		b.pointer = invoke(b.resolver)
+		b.instance = b.pointer.Elem()
+	} else {
+		data := invoke(b.resolver).Interface()
+		pt := reflect.PtrTo(reflect.TypeOf(data))
+		pv := reflect.New(pt.Elem())
+		pv.Elem().Set(reflect.ValueOf(data))
+		b.pointer = pv
+		b.instance = b.pointer.Elem()
+	}
+	b.initialized = true
+}
+
+func (b *binding) returnValue(pointerType bool) reflect.Value {
+	if pointerType {
+		return b.pointer
+	}
+	return b.pointer.Elem()
+}
+
+func (b *binding) newValue(pointerType bool) reflect.Value {
+	if pointerType {
+		if b.pointerType {
+			return invoke(b.resolver)
+		} else {
+			data := invoke(b.resolver).Interface()
+			pt := reflect.PtrTo(reflect.TypeOf(data))
+			pv := reflect.New(pt.Elem())
+			pv.Elem().Set(reflect.ValueOf(data))
+			return pv
+		}
+	} else {
+		if b.pointerType {
+			return invoke(b.resolver).Elem()
+		} else {
+			return invoke(b.resolver)
+		}
+	}
 }
 
 // container is the IoC container that will keep all of the bindings.
 var container = map[reflect.Type]*binding{}
-var containerPointer = map[reflect.Type]*binding{}
 
 // bind will map an abstraction to a concrete and set instance if it's a singleton binding.
 func bind(resolver interface{}, singleton bool) {
@@ -43,14 +87,16 @@ func bind(resolver interface{}, singleton bool) {
 
 	for i := 0; i < resolverTypeOf.NumOut(); i++ {
 		if resolverTypeOf.Out(i).Kind() == reflect.Ptr {
-			containerPointer[resolverTypeOf.Out(i)] = &binding{
-				resolver:  resolver,
-				singleton: singleton,
+			container[resolverTypeOf.Out(i).Elem()] = &binding{
+				resolver:    resolver,
+				singleton:   singleton,
+				pointerType: true,
 			}
 		} else {
 			container[resolverTypeOf.Out(i)] = &binding{
-				resolver:  resolver,
-				singleton: singleton,
+				resolver:    resolver,
+				singleton:   singleton,
+				pointerType: false,
 			}
 		}
 	}
@@ -71,29 +117,16 @@ func arguments(function interface{}) []reflect.Value {
 
 func getValue(abstraction reflect.Type) reflect.Value {
 	if abstraction.Kind() == reflect.Ptr {
-		if concrete, ok := containerPointer[abstraction]; ok {
-			return reflect.ValueOf(concrete.resolve())
+		if concrete, ok := container[abstraction.Elem()]; ok {
+			return concrete.resolve(true)
 		} else {
-			if concrete, ok := container[abstraction.Elem()]; ok {
-				//https://github.com/a8m/reflect-examples#wrap-a-reflectvalue-with-pointer-t--t
-				data := concrete.resolve()
-				pt := reflect.PtrTo(reflect.TypeOf(data))
-				pv := reflect.New(pt.Elem())
-				pv.Elem().Set(reflect.ValueOf(data))
-				return pv
-			} else {
-				panic("no concrete found for the abstraction " + abstraction.String())
-			}
+			panic("no concrete found for the abstraction " + abstraction.String())
 		}
 	} else {
 		if concrete, ok := container[abstraction]; ok {
-			return reflect.ValueOf(concrete.resolve())
+			return concrete.resolve(false)
 		} else {
-			if concrete, ok := containerPointer[reflect.PtrTo(abstraction)]; ok {
-				return reflect.ValueOf(concrete.resolve()).Elem()
-			} else {
-				panic("no concrete found for the abstraction " + abstraction.String())
-			}
+			panic("no concrete found for the abstraction " + abstraction.String())
 		}
 	}
 }
@@ -115,7 +148,6 @@ func Transient(resolver interface{}) {
 // Reset will reset the container and remove all the bindings.
 func Reset() {
 	container = map[reflect.Type]*binding{}
-	containerPointer = map[reflect.Type]*binding{}
 }
 
 // Make will resolve the dependency and return a appropriate concrete of the given abstraction.
@@ -130,7 +162,7 @@ func Make(receiver interface{}) {
 
 	if receiverTypeOf.Kind() == reflect.Ptr {
 		abstraction := receiverTypeOf.Elem()
-		reflect.ValueOf(receiver).Elem().Set(getValue(abstraction))
+		reflect.ValueOf(receiver).Set(getValue(abstraction))
 		return
 	}
 

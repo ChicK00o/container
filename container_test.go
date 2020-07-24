@@ -193,6 +193,37 @@ func TestCombinedObject6(t *testing.T) {
 	assert.Equal(t, combined.Cir.a, 5)
 }
 
+func TestCombinedObject7(t *testing.T) {
+	container.Reset()
+
+	container.Singleton(func() Circle {
+		return Circle{a:5}
+	})
+
+	container.Singleton(func() *MySQL {
+		return &MySQL{}
+	})
+
+	container.Singleton(func(cir *Circle, db *MySQL) Combined{
+		return Combined{
+			Cir: cir,
+			Db:  db,
+		}
+	})
+
+	var circle Circle
+	container.Make(&circle)
+
+	var combined *Combined
+	container.Make(&combined)
+	combined.Cir.a = 6
+
+	assert.NotNil(t, combined)
+	assert.NotNil(t, combined.Cir)
+	assert.Equal(t, combined.Cir.a, 6)
+	assert.Equal(t, circle.a, 6)
+}
+
 func TestSingletonItShouldMakeAnInstanceOfTheAbstraction(t *testing.T) {
 	area := 5
 
