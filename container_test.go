@@ -196,8 +196,8 @@ func TestCombinedObject6(t *testing.T) {
 func TestCombinedObject7(t *testing.T) {
 	container.Reset()
 
-	container.Singleton(func() Circle {
-		return Circle{a:5}
+	container.Singleton(func() *Circle {
+		return &Circle{a:5}
 	})
 
 	container.Singleton(func() *MySQL {
@@ -211,7 +211,7 @@ func TestCombinedObject7(t *testing.T) {
 		}
 	})
 
-	var circle Circle
+	var circle *Circle
 	container.Make(&circle)
 
 	var combined *Combined

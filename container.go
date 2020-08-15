@@ -162,7 +162,7 @@ func Make(receiver interface{}) {
 
 	if receiverTypeOf.Kind() == reflect.Ptr {
 		abstraction := receiverTypeOf.Elem()
-		reflect.ValueOf(receiver).Set(getValue(abstraction))
+		reflect.ValueOf(receiver).Elem().Set(getValue(abstraction))
 		return
 	}
 
